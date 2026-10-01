@@ -140,7 +140,7 @@ var API="/api/resultado";
 var POLL_MS=30000;
 
 var CANDS=[
- {n:13,name:"Lula",short:"LULA",party:"PT",c:"#E11D2E",t:"#FFFFFF",s:"#FFFFFF",hair:"gray",style:"short",beard:1,build:1},
+ {n:13,name:"Lula",short:"LULA",party:"PT",c:"#E11D2E",t:"#FFFFFF",s:"#FFFFFF",hair:"gray",style:"short",beard:1,beardColor:"#F7F7F2",build:1},
  {n:14,name:"Renan Santos",short:"RENAN",party:"Missão",c:"#0B0D10",t:"#FFC20E",s:"#FFC20E",hair:"dark",style:"short",beard:0,build:0},
  {n:16,name:"Hertz Dias",short:"HERTZ",party:"PSTU",c:"#D81FA0",t:"#FFFFFF",s:"#FFFFFF",hair:"dark",style:"short",beard:0,build:0},
  {n:21,name:"Edmilson Costa",short:"EDMILSON",party:"PCB",c:"#FFD400",t:"#8E0F1A",s:"#E11D2E",hair:"gray",style:"short",beard:0,build:1},
@@ -442,8 +442,11 @@ var runners=CANDS.map(function(d,i){
     [-1,1].forEach(function(s){var lk=ball(0.13,hairM,0,0.7,1.5,0.8);lk.position.set(s*0.4,-0.14,0.02);head.add(lk);});
   }
   if(d.beard){
-    var bd=new THREE.Mesh(new THREE.SphereGeometry(0.485,24,12,0,Math.PI,Math.PI*0.66,Math.PI*0.34),hairM);
-    bd.position.y=-0.01;head.add(bd);
+    /* barba: a cor segue o cabelo; no Lula ("beardColor") é branca, mais clara que o cabelo grisalho */
+    var beardM=d.beardColor?new THREE.MeshStandardMaterial({color:d.beardColor,roughness:.95}):hairM;
+    var bd=ball(0.46,beardM,0.02,0.95,0.5,0.92);bd.position.set(0,-0.31,0.08);head.add(bd);                 /* barba (queixo e mandíbula) */
+    var mus=ball(0.12,beardM,0,1.7,0.32,0.5);mus.position.set(0,-0.045,0.455);head.add(mus);                /* bigode */
+    [-1,1].forEach(function(s){var sb=ball(0.13,beardM,0,0.6,1.7,0.9);sb.position.set(s*0.385,-0.16,0.14);head.add(sb);}); /* costeletas */
   }
 
   var arms=[-1,1].map(function(s){
