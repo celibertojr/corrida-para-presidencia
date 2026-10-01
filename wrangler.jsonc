@@ -1,0 +1,12 @@
+{
+  // Corrida para a Presidência: Worker + arquivos estáticos (Cloudflare Workers)
+  "name": "corrida-para-presidencia",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./public",
+    // Arquivos de public/ são servidos direto (sem gastar cota); o Worker só roda
+    // quando nenhum arquivo corresponde ao endereço, ou seja, para /api/*
+    "binding": "ASSETS"
+  }
+}

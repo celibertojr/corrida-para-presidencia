@@ -1,4 +1,4 @@
-// _worker.js — Cloudflare Pages (modo avançado)
+// Worker da Corrida para a Presidência (Cloudflare Workers com arquivos estáticos, ou Pages modo avançado)
 // Serve o site (index.html) e expõe GET /api/resultado com os dados da Presidência
 // vindos do TSE, já normalizados e com cache na borda da Cloudflare.
 //
@@ -79,6 +79,11 @@ function pickUrl(env) {
   return { url: UPSTREAM.oficial, src: "oficial" }; // somente dados oficiais; não há modo de simulação
 }
 
+// Memória do próprio isolate: segunda barreira de cache. Funciona mesmo onde a Cache API
+// não guarda nada (endereços *.workers.dev), e serve de reserva se o TSE falhar.
+let MEM = { t: 0, data: null };
+export function resetMemory() { MEM = { t: 0, data: null }; }
+
 async function resultado(request, env, ctx) {
   const cache = caches.default;
   const base = new URL(request.url).origin;
@@ -87,6 +92,7 @@ async function resultado(request, env, ctx) {
 
   const hit = await cache.match(freshKey);
   if (hit) return hit;
+  if (MEM.data && Date.now() - MEM.t < FRESH * 1000) return json(MEM.data, FRESH);
 
   const up = pickUrl(env);
   const keep = (key, resp, ttl) => {
@@ -96,10 +102,15 @@ async function resultado(request, env, ctx) {
   };
 
   try {
-    const r = await fetch(up.url, { headers: { accept: "application/json" } });
+    // cf.cacheTtlByStatus: o cache da Cloudflare também segura a resposta do TSE entre isolates
+    const r = await fetch(up.url, {
+      headers: { accept: "application/json" },
+      cf: { cacheTtlByStatus: { "200-299": FRESH, "404": MISS, "403": MISS, "500-599": 0 } },
+    });
     if (r.status === 404 || r.status === 403) {
       const reserva = await cache.match(staleKey);
       if (reserva) { const j = await reserva.json(); j.stale = true; return json(j, FAIL); }
+      if (MEM.data) return json(Object.assign({}, MEM.data, { stale: true }), FAIL);
       const resp = json({ ok: false, error: "not_published", status: r.status, src: up.src }, MISS);
       keep(freshKey, resp, MISS);
       return resp;
@@ -107,6 +118,7 @@ async function resultado(request, env, ctx) {
     if (!r.ok) throw new Error("upstream " + r.status);
     const data = normalize(await r.json(), up.src);
     if (!data.ok) throw new Error(data.error);
+    MEM = { t: Date.now(), data: data };
     const resp = json(data, FRESH);
     keep(freshKey, resp, FRESH);
     keep(staleKey, json(data, STALE), STALE);
@@ -117,6 +129,7 @@ async function resultado(request, env, ctx) {
       const j = await reserva.json(); j.stale = true;
       return json(j, FAIL);
     }
+    if (MEM.data) return json(Object.assign({}, MEM.data, { stale: true }), FAIL);
     const resp = json({ ok: false, error: "upstream_error", src: up.src }, FAIL, 502);
     keep(freshKey, resp, FAIL);
     return resp;
