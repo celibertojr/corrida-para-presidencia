@@ -109,11 +109,6 @@ python3 verificar_paleta.py
 
 Os corredores são **personagens genéricos de desenho**, sem a pretensão de retratar o rosto de ninguém: variam apenas em porte, cabelo (ou ausência dele) e cor da camisa.
 
-## ⚖️ Limites do plano gratuito
-
-- **100 mil execuções do Worker por dia.** Só `/api/*` conta; a página e os arquivos estáticos não. Com consulta a cada 30 s e cache de 20 s, comporta em torno de 800 horas de visualização por dia.
-- Em endereços `*.workers.dev` o cache de borda pode não valer; por isso o Worker também mantém um cache em memória. Para audiência muito grande, prefira um domínio próprio.
-
 ## ⚠️ Aviso
 
 Este é um projeto **independente, sem qualquer vínculo com o Tribunal Superior Eleitoral (TSE)**, com candidatos ou partidos. Os números vêm da divulgação do TSE, mas podem ter atraso ou falhas, e as indicações de tendência são apenas estimativas. **Para saber quem foi eleito, use somente as fontes oficiais do TSE:** [resultados.tse.jus.br](https://resultados.tse.jus.br).
