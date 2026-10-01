@@ -288,8 +288,8 @@ addRing(RO,RO+3,new THREE.MeshStandardMaterial({color:0x2f7a3a,roughness:1}),0.0
   }
   var bnFin=mkBanner("CHEGADA · 100% DAS URNAS","#ffd23f","#1a1300");
   var bnIni=mkBanner("SAÍDA · 0% DAS URNAS","#5fd38d","#06210f");
-  /* Câmera "Chegada" e arquibancada de chegada ficam do lado +x: essa face mostra CHEGADA; a face -x (atrás dos corredores na largada) mostra SAÍDA */
-  [[-1,bnIni],[1,bnFin]].forEach(function(p){
+  /* Ordem trocada a pedido: a face +x (vista pela câmera "Chegada") mostra SAÍDA; a face -x mostra CHEGADA */
+  [[-1,bnFin],[1,bnIni]].forEach(function(p){
     var s=p[0],pl=new THREE.Mesh(new THREE.PlaneGeometry(span+0.6,3.2),new THREE.MeshBasicMaterial({map:p[1].tex}));
     pl.position.set(FIN+s*0.65,11.6,zc);pl.rotation.y=s*Math.PI/2;scene.add(pl);
   });
