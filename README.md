@@ -44,6 +44,7 @@ Um painel de acompanhamento do **1º turno de 2026** (4 de outubro) em que a apu
 | **Número no corredor** | Cada corredor mostra a sua porcentagem de votos válidos, como o site do TSE. |
 | **Classificação** | Pelos **votos válidos** de cada candidato. |
 | **Cenário** | *Garantido* quando a vantagem é maior que todo o eleitorado ainda não apurado; *tendência* quando supera o dobro dos votos válidos esperados no ritmo atual. Com 100% das urnas, vale o status oficial do TSE (Eleito / 2º turno). |
+| **Botão "Vencedores"** | Abre um pódio 3D com o 1º (degrau mais alto) e o 2º colocados. Fica desativado até passar de **99%** das urnas apuradas; se a diferença entre o 1º e o 2º ainda estiver dentro da margem de incerteza dos votos que faltam (o maior entre 10% dos votos válidos restantes e 3,29 desvios-padrão do sorteio multinomial), só libera com **99,99%**. O resultado do pódio é parcial até o TSE divulgar o final. |
 
 ## 🗂️ De onde vêm os dados
 

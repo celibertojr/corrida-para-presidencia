@@ -71,6 +71,9 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
 .seg button:focus-visible,.btn:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
 .btn{display:inline-flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .btn:hover,.seg button:hover:not([aria-pressed=true]){border-color:rgba(255,255,255,.4)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:disabled:hover{border-color:var(--line)}
+.btn[aria-pressed=true]{border-color:var(--gold);color:var(--gold)}
 .btn.primary{background:var(--gold);color:#1a1300;border-color:var(--gold)}
 .btn svg{width:14px;height:14px;fill:currentColor}
 .scrub{display:flex;align-items:center;gap:10px;flex:1;min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
@@ -126,6 +129,7 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
         <button type="button" data-cam="finish" aria-pressed="false">Chegada</button>
       </div>
       <button type="button" class="btn" id="tglrank" aria-controls="rank" aria-expanded="false"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1 2h12v2H1zM1 6h12v2H1zM1 10h12v2H1z"/></svg>Classificação</button>
+      <button type="button" class="btn" id="btnpod" disabled aria-pressed="false" title="Disponível com mais de 99% das urnas apuradas. Se o 1º e o 2º estiverem estatisticamente empatados, só com 99,99%."><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1h8v3c0 2-1.5 3.5-3 3.8V10h2v2H4v-2h2V7.8C4.5 7.5 3 6 3 4zM1 2h2v2.5C2 4.5 1 3.5 1 2.5zM11 2h2v.5c0 1-1 2-2 2z"/></svg><span id="podtxt">Vencedores</span></button>
     </div>
     <p class="aviso"><b>Aviso:</b> site independente, sem qualquer vínculo com o Tribunal Superior Eleitoral (TSE), com candidatos ou partidos. Os números vêm da divulgação do TSE, mas podem ter atraso ou falhas, e as indicações de tendência são apenas estimativas. Para saber quem foi eleito, use somente as fontes oficiais do TSE (<a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">resultados.tse.jus.br</a>).</p>
   </footer>
@@ -491,6 +495,65 @@ var runners=CANDS.map(function(d,i){
 var ringSel=new THREE.Mesh(new THREE.RingGeometry(2.3,2.8,32),new THREE.MeshBasicMaterial({color:0xffd23f,side:THREE.DoubleSide,transparent:true,opacity:.9}));
 ringSel.rotation.x=-Math.PI/2;ringSel.visible=false;scene.add(ringSel);
 
+/* ---------- Pódio (1º e 2º lugares), visível só no modo "Vencedores" ---------- */
+var POD={h1:3.4,h2:2.2,x1:4.9,x2:-4.9,w:9.6,d:7};
+var podium=new THREE.Group();podium.visible=false;scene.add(podium);
+(function(){
+  function face(num,c1,c2){
+    var fn=function(x,w,h){
+      x.fillStyle=c1;x.fillRect(0,0,w,h);x.fillStyle=c2;x.fillRect(0,0,w,14);x.fillRect(0,h-14,w,14);
+      x.fillStyle="#1a1300";x.font="800 190px "+DISP;x.textAlign="center";x.textBaseline="middle";x.fillText(num,w/2,h/2+8);
+    };
+    var t=canvasTex(256,256,fn);t.redraw=function(){fn(t.ctx,256,256);t.tex.needsUpdate=true;};fontRedraws.push(t.redraw);return t;
+  }
+  function block(h,x,topC,c1,c2,num){
+    var f=face(num,c1,c2);
+    var side=new THREE.MeshStandardMaterial({color:c1,roughness:.55}),top=new THREE.MeshStandardMaterial({color:topC,roughness:.4,metalness:.25}),
+        front=new THREE.MeshStandardMaterial({map:f.tex,roughness:.55});
+    var m=new THREE.Mesh(new THREE.BoxGeometry(POD.w,h,POD.d),[side,side,top,side,front,side]);
+    m.position.set(x,h/2,0);m.castShadow=true;m.receiveShadow=true;podium.add(m);
+  }
+  block(POD.h1,POD.x1,0xffe27a,"#f2c230","#ad8410","1");
+  block(POD.h2,POD.x2,0xe8edf3,"#c9d1da","#7d8794","2");
+  var base=new THREE.Mesh(new THREE.BoxGeometry(POD.w*2+4,0.3,POD.d+3),new THREE.MeshStandardMaterial({color:0x14306b,roughness:.7}));
+  base.position.set(0,-0.1,0);base.receiveShadow=true;podium.add(base);
+})();
+/* pose de comemoração: braços para cima, em V; o 1º salta um pouco mais */
+function podiumPose(r,k,t){
+  var h=k===0?POD.h1:POD.h2,x=k===0?POD.x1:POD.x2,w=Math.sin(t*4+k*1.7);
+  r.root.position.set(x,h,0);r.root.rotation.y=0;
+  r.legs[0].hp.rotation.x=0;r.legs[1].hp.rotation.x=0;r.legs[0].kn.rotation.x=0;r.legs[1].kn.rotation.x=0;
+  r.arms[0].sh.rotation.x=0;r.arms[1].sh.rotation.x=0;
+  r.arms[0].sh.rotation.z=-2.4-0.12*w;r.arms[1].sh.rotation.z=2.4+0.12*w;
+  r.arms[0].el.rotation.x=-0.15;r.arms[1].el.rotation.x=-0.15;
+  r.upper.rotation.x=0;r.upper.rotation.y=0;
+  r.body.position.y=Math.abs(w)*(k===0?0.18:0.1);
+  r.label.sprite.position.set(x,h+RS*3.7,0);
+}
+/* Pódio liberado: (a) mais de 99% das urnas apuradas E diferença entre 1º e 2º maior que a margem de incerteza dos votos que faltam;
+   (b) ou 99,99% ou mais, em qualquer caso.
+   Margem: o maior entre 10% dos votos válidos que faltam (a parcela que falta pode divergir do padrão já apurado)
+   e 3,29 desvios-padrão (99,9%) do sorteio multinomial dos votos restantes. */
+var POD_MIN=99,POD_FULL=99.99,POD_SWING=0.10,POD_Z=3.29;
+function gapSignificant(){
+  if(order.length<2)return false;
+  var v1=st.val[order[0]],v2=st.val[order[1]],tot=st.vvc||st.val.reduce(function(a,b){return a+b;},0);
+  if(!(v2>0)||!(tot>0)||!(st.est>0))return false;
+  var d=v1-v2,R=Math.max(0,st.te-st.est)*tot/st.est,swing=Math.max(POD_SWING*R,POD_Z*Math.sqrt(R));
+  return d+R*d/tot>swing;
+}
+function podiumReady(){
+  if(order.length<2||!(st.val[order[1]]>0))return false;
+  if(st.pct>=POD_FULL)return true;
+  return st.pct>POD_MIN&&gapSignificant();
+}
+function setPodium(on){
+  st.podium=!!on;podium.visible=st.podium;ringSel.visible=false;
+  $("btnpod").setAttribute("aria-pressed",st.podium?"true":"false");
+  $("podtxt").textContent=st.podium?"Voltar à corrida":"Vencedores";
+  dirty=true;
+}
+
 function animateRunner(r,dt,k,idle){
   r.ph+=dt*(idle?2.2:7.5+4*k);
   var s=Math.sin(r.ph),A=idle?0.12:0.75+0.35*k;
@@ -507,7 +570,7 @@ function animateRunner(r,dt,k,idle){
 /* ---------- Estado e dados ---------- */
 function zeros(){return CANDS.map(function(){return 0;});}
 var st={pct:0,share:zeros(),val:zeros(),vvc:0,te:0,est:0,ts:0,sc:0,absent:CANDS.map(function(){return false;}),offStatus:CANDS.map(function(){return "";}),
-  mode:"wait",sel:-1,cam:"pan",updated:"",stale:false,waitErr:false};
+  mode:"wait",podium:false,sel:-1,cam:"pan",updated:"",stale:false,waitErr:false};
 var order=CANDS.map(function(_,i){return i;}),rankOf=[],dirty=true,lastUI=0,lastScreen=0;
 function recompute(){
   order=CANDS.map(function(_,i){return i;}).sort(function(a,b){return st.val[b]-st.val[a];});
@@ -610,14 +673,19 @@ function updateUI(){
     li.setAttribute("aria-label",(k+1)+"º "+d(i).name+", "+(st.pct>0?fmt(st.share[i])+"%":"sem dados"));
   });
   runners.forEach(function(r,i){
-    var show=st.pct>0&&!st.absent[i]&&(rankOf[i]<3||st.sel===i);
-    r.label.sprite.visible=show;r.root.visible=!st.absent[i];
+    var show=st.pct>0&&!st.absent[i]&&(st.podium?rankOf[i]<2:(rankOf[i]<3||st.sel===i));
+    r.label.sprite.visible=show;r.root.visible=!st.absent[i]&&(!st.podium||rankOf[i]<2);
     if(show){var tx=fmt(st.share[i])+"%";if(tx!==r.label.last)r.label.draw(tx);}
   });
+  var canPod=live&&podiumReady();
+  $("btnpod").disabled=!canPod;
+  if(!canPod&&st.podium)setPodium(false);
   $("modechip").textContent=live?(st.stale?"TSE · último dado":(st.pct>0?"Ao vivo · TSE":"Aguardando apuração")):"Aguardando";
   $("modechip").className="mode"+(live&&!st.stale&&st.pct>0?" live":"");
   $("modenote").textContent=live?("Dados oficiais do TSE, gerados em "+(st.updated||"--")+". Resultado parcial até 100% das urnas."+(st.stale?" O TSE não respondeu; mostrando o último dado recebido.":"")):
     (st.waitErr?"Sem resposta do TSE. Esta página tenta de novo sozinha a cada 30 segundos.":"Esta página atualiza sozinha assim que o TSE publicar as primeiras urnas.");
+  if(live&&!st.podium&&st.pct>POD_MIN&&!canPod)$("modenote").textContent+=" O pódio será liberado com 99,99% das urnas: a diferença entre o 1º e o 2º ainda está dentro da margem de incerteza.";
+  if(st.podium)$("modenote").textContent="Pódio com "+fmt(st.pct)+"% das urnas apuradas: os dois primeiros colocados até agora. Resultado parcial; só o TSE declara o resultado oficial.";
 }
 function d(i){return CANDS[i];}
 
@@ -655,8 +723,11 @@ function setCam(m){
 }
 Array.prototype.forEach.call(document.querySelectorAll("[data-cam]"),function(b){b.addEventListener("click",function(){setCam(b.getAttribute("data-cam"));});});
 function updateCamera(dt,now){
-  var kk=1-Math.exp(-dt*(st.cam==="pan"?7:3.2));
-  if(st.cam==="pan"){
+  var kk=1-Math.exp(-dt*(st.podium||st.cam==="pan"?7:3.2));
+  if(st.podium){ /* de frente para o pódio; em telas estreitas afasta para caber os dois degraus */
+    var dd=Math.max(32,34/(2*Math.tan(camera.fov*Math.PI/360)*camera.aspect));
+    wantPos.set(0,10,dd);wantLook.set(0,6.4,0);
+  }else if(st.cam==="pan"){
     if(!reduced&&now-cam.lastInt>4000)cam.az+=dt*0.07;
     var ce=Math.cos(cam.el);
     wantPos.set(Math.sin(cam.az)*ce*cam.dist,Math.sin(cam.el)*cam.dist+4,Math.cos(cam.az)*ce*cam.dist);
@@ -703,6 +774,7 @@ function setRank(open,save){
   if(save){try{localStorage.setItem("rankOpen",open?"1":"0");}catch(e){}}
 }
 $("tglrank").addEventListener("click",function(){setRank($("rank").classList.contains("off"),true);});
+$("btnpod").addEventListener("click",function(){if(!$("btnpod").disabled)setPodium(!st.podium);});
 $("closerank").addEventListener("click",function(){setRank(false,true);$("tglrank").focus();});
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!$("rank").classList.contains("off"))setRank(false,true);});
 var savedRank="0";try{savedRank=localStorage.getItem("rankOpen")||"0";}catch(e){}
@@ -724,6 +796,8 @@ function frame(now){
   var dt=Math.min(0.05,(now-lastT)/1000);lastT=now;
   var tg=targets(),kk=1-Math.exp(-dt*1.8);
   runners.forEach(function(r,i){
+    if(st.podium&&rankOf[i]<2){podiumPose(r,rankOf[i],now/1000);return;}
+    r.arms[0].sh.rotation.z=0;r.arms[1].sh.rotation.z=0;
     var prev=r.cur;r.cur+=(tg[i]-r.cur)*kk;
     var moving=Math.abs(tg[i]-r.cur)>0.0004||Math.abs(r.cur-prev)>1e-6;
     var p=pt(r.R,r.cur),q=pt(r.R,r.cur+0.0015),hx=q[0]-p[0],hz=q[1]-p[1],ln=Math.hypot(hx,hz)||1;
@@ -732,7 +806,7 @@ function frame(now){
     animateRunner(r,dt,moving?1:0.35,st.pct<=0);
     r.label.sprite.position.set(p[0],RS*3.55,p[1]);
   });
-  if(st.sel>=0){var sp=runners[st.sel].root.position;ringSel.position.set(sp.x,0.08,sp.z);ringSel.visible=true;}else ringSel.visible=false;
+  if(st.sel>=0&&!st.podium){var sp=runners[st.sel].root.position;ringSel.position.set(sp.x,0.08,sp.z);ringSel.visible=true;}else ringSel.visible=false;
   if(!reduced){var t=now/1000;crowdGroups.forEach(function(g,k){g.position.y=Math.abs(Math.sin(t*(2.2+k*0.35)+k*1.7))*0.22*(st.pct>0?1:0.3);});}
   if(dirty&&now-lastUI>120){dirty=false;lastUI=now;updateUI();}
   if(now-lastScreen>250){lastScreen=now;drawScreen();}
