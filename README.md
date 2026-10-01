@@ -69,6 +69,7 @@ flowchart LR
 
 - **`public/index.html`**: o site inteiro (3D, interface, candidatos, cores). Roda no navegador, sem build.
 - **`src/worker.js`**: Worker da Cloudflare que busca o JSON do TSE, converte a vírgula decimal, normaliza os campos e guarda em cache. Assim, milhares de visitantes geram **no máximo uma consulta ao TSE a cada 20 segundos**, o que respeita o limite do TSE (bloqueio por IP em excesso de requisições).
+- **Horário de início**: antes de domingo, 4/10, às 17h (Brasília), nem a página nem o Worker consultam o TSE; a página mostra a contagem regressiva. A rota `/api/verificar` lê o TSE a qualquer momento, para conferir manualmente que a leitura funciona.
 - **Falhas do TSE**: o Worker devolve o último dado bom marcado como *"último dado"*; a página nunca inventa números.
 - **Atualização automática**: a página consulta o Worker a cada 30 segundos (e ao voltar para a aba), sem recarregar.
 

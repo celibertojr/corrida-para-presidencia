@@ -82,7 +82,7 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
 .note{font-size:12px;color:var(--fg);background:var(--panel);padding:5px 10px;border-radius:6px;width:fit-content;max-width:100%;box-sizing:border-box;pointer-events:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .mode{display:inline-block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.1);color:var(--fg);margin-right:6px}
 .mode.live{background:var(--ok);color:#06210f}
-#fail{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:16px}
+#fail{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);display:none;max-width:min(520px,calc(100% - 32px));box-sizing:border-box;text-align:center;padding:14px 18px;font-size:14px;line-height:1.4;background:var(--panel);border:1px solid var(--line);border-radius:10px}
 @media (max-width:760px){
   .top{gap:8px}
   .meter{width:100%}
@@ -102,7 +102,7 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
 
 <div id="app">
   <div id="stage"></div>
-  <div id="fail">Não foi possível iniciar o 3D neste navegador. Tente atualizar a página ou usar outro navegador.</div>
+  <div id="fail" role="status">O 3D não pôde ser iniciado neste navegador. Os números e a classificação continuam atualizando normalmente.</div>
   <header class="top">
     <div class="brand">
       <span class="kick">Eleições 2026 · Presidente · 1º turno</span>
@@ -136,12 +136,20 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>/* CDN reserva, se a principal falhar */window.THREE||document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"><\/script>');</script>
 <script>
 (function(){
 "use strict";
 /* Dados ao vivo: o _worker.js (mesmo endereço do site) busca e normaliza o JSON do TSE. */
 var API="/api/resultado";
 var POLL_MS=30000;
+/* Início da divulgação: domingo, 4/10/2026, 17h de Brasília (20h UTC). Antes disso a página não faz nenhuma requisição. */
+var START=(typeof window.CORRIDA_START==="number")?window.CORRIDA_START:Date.UTC(2026,9,4,20,0,0);
+function untilStart(){return START-Date.now();}
+function fmtWait(ms){
+  var m=Math.ceil(ms/60000),d=Math.floor(m/1440),h=Math.floor((m%1440)/60),mi=m%60;
+  return (d>0?d+(d>1?" dias, ":" dia, "):"")+(h>0||d>0?h+" h e ":"")+mi+" min";
+}
 
 var CANDS=[
  {n:13,name:"Lula",short:"LULA",party:"PT",c:"#E11D2E",t:"#FFFFFF",s:"#FFFFFF",hair:"gray",style:"short",beard:1,beardColor:"#F2F2EC",age:1,recede:0.16,build:1},
@@ -175,7 +183,7 @@ function pt(R,f){
   if(d<=Math.PI*R){th=-Math.PI/2-d/R;return[-L/2+R*Math.cos(th),R*Math.sin(th)];} d-=Math.PI*R;
   return[-L/2+d,R];
 }
-function fmt(x){return (isFinite(x)?x:0).toFixed(1).replace(".",",");}
+function fmt(x){var v=Number(x);return (isFinite(v)?v:0).toFixed(1).replace(".",",");}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 
 /* ---------- Renderer e cena ---------- */
@@ -183,7 +191,11 @@ var host=document.getElementById("stage");
 var renderer;
 try{
   renderer=new THREE.WebGLRenderer({antialias:true});
-}catch(e){document.getElementById("fail").style.display="flex";return;}
+}catch(e){
+  /* Sem 3D: a cena não é desenhada, mas números, classificação e pódio continuam atualizando */
+  document.getElementById("fail").style.display="block";
+  renderer={domElement:document.createElement("canvas"),shadowMap:{},setPixelRatio:function(){},setSize:function(){},render:function(){}};
+}
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
@@ -538,8 +550,9 @@ var POD_MIN=99,POD_FULL=99.99,POD_SWING=0.10,POD_Z=3.29;
 function gapSignificant(){
   if(order.length<2)return false;
   var v1=st.val[order[0]],v2=st.val[order[1]],tot=st.vvc||st.val.reduce(function(a,b){return a+b;},0);
-  if(!(v2>0)||!(tot>0)||!(st.est>0))return false;
-  var d=v1-v2,R=Math.max(0,st.te-st.est)*tot/st.est,swing=Math.max(POD_SWING*R,POD_Z*Math.sqrt(R));
+  var est=estEff();
+  if(!(v2>0)||!(tot>0)||!(est>0)||!(st.te>0))return false;
+  var d=v1-v2,R=Math.max(0,st.te-est)*tot/est,swing=Math.max(POD_SWING*R,POD_Z*Math.sqrt(R));
   return d+R*d/tot>swing;
 }
 function podiumReady(){
@@ -595,36 +608,50 @@ function applyLive(j){
   m=CANDS.map(function(c){return byN[c.n]||null;});
   st.pct=clamp(j.pst,0,100);
   st.val=m.map(function(c){return c?c.vap:0;});
-  st.share=m.map(function(c){return c?c.pvap:0;});
+  var base=(j.vvc>0)?j.vvc:st.val.reduce(function(a,b){return a+b;},0);
+  st.share=m.map(function(c){var p=c?Number(c.pvap):0;return isFinite(p)&&c&&c.pvap!==null?p:(c&&base>0?100*c.vap/base:0);});
   st.offStatus=m.map(function(c){return c?c.stt:"";});
   st.absent=m.map(function(c){return !c;});
   st.vvc=j.vvc||0;st.te=j.te||0;st.est=j.est||0;st.ts=j.ts||0;st.sc=j.st||0;
   st.updated=j.generated||"";st.stale=!!j.stale;
   recompute();dirty=true;
 }
+var pollSeq=0,appliedSeq=0;
 function pollLive(){
+  if(untilStart()>0){dirty=true;return;} /* antes das 17h de 4/10: nenhuma requisição, só atualiza a contagem regressiva */
   if(!window.fetch||document.hidden)return; /* aba em segundo plano não consulta: poupa cota; volta a consultar ao reaparecer */
-  fetch(API,{cache:"no-store"}).then(function(r){return r.text();}).then(function(t){
+  var seq=++pollSeq,ctl=window.AbortController?new AbortController():null,tm=ctl?setTimeout(function(){ctl.abort();},20000):0;
+  fetch(API,ctl?{cache:"no-store",signal:ctl.signal}:{cache:"no-store"}).then(function(r){return r.text();}).then(function(t){
+    if(tm)clearTimeout(tm);
+    if(seq<appliedSeq)return; /* resposta atrasada, mais velha que a última aplicada: descarta */
+    appliedSeq=seq;
     var j;try{j=JSON.parse(t);}catch(e){j=null;}
-    if(!j||typeof j.ok==="undefined"){failLive();return;} /* endereço sem a API do site */
+    if(!j||typeof j.ok==="undefined"){failLive();return;} /* endereço sem a API do site, ou limite da Cloudflare */
     if(j.ok){
-      var known=CANDS.some(function(c){return j.cands.some(function(x){return x.n===c.n;});});
+      var known=Array.isArray(j.cands)&&CANDS.some(function(c){return j.cands.some(function(x){return x.n===c.n;});});
       if(!known){failLive();return;} /* só aceita dados reais com os números de urna dos candidatos */
       if(st.mode!=="live")setMode("live");applyLive(j);
     }
     else if(st.mode==="live"){st.stale=true;dirty=true;}
-    else{st.waitErr=(j.error!=="not_published");dirty=true;}
-  }).catch(failLive);
+    else{st.waitErr=!(j.error==="not_published"||j.error==="not_started");dirty=true;}
+  }).catch(function(){if(tm)clearTimeout(tm);if(seq>=appliedSeq)failLive();});
 }
 function failLive(){if(st.mode==="live"){st.stale=true;}else{st.waitErr=true;}dirty=true;}
 /* Análise de cenário. Garantido: a diferença supera todos os eleitores ainda não apurados.
    Tendência: a diferença supera o dobro dos votos válidos esperados no ritmo atual de apuração. */
+/* eleitorado das seções já apuradas; se o TSE não informar, estima pela fração de urnas apuradas */
+function estEff(){return st.est>0?st.est:(st.te>0?st.te*st.pct/100:0);}
 function analyze(){
-  if(st.mode==="wait")return{lv:0,t2:0,txt:st.waitErr?"O TSE não respondeu. Tentando de novo em instantes.":"Aguardando o TSE iniciar a divulgação da apuração (a partir das 17h, horário de Brasília)."};
+  if(st.mode==="wait"){
+    var ws=untilStart();
+    if(ws>0)return{lv:0,t2:0,txt:"A apuração começa domingo, 4/10, às 17h (Brasília). Faltam <b>"+fmtWait(ws)+"</b>."};
+    return{lv:0,t2:0,txt:st.waitErr?"O TSE não respondeu. Tentando de novo em instantes.":"Aguardando o TSE iniciar a divulgação da apuração (a partir das 17h, horário de Brasília)."};
+  }
   if(st.pct<=0)return{lv:0,t2:0,txt:"Aguardando as primeiras urnas."};
   var v=order.map(function(i){return st.val[i];}),n=order.map(function(i){return CANDS[i].name;});
   var tot=st.vvc||v.reduce(function(a,b){return a+b;},0);
-  var rem=Math.max(0,st.te-st.est),proj=st.est>0?rem*tot/st.est:0;
+  var est=estEff(),rem=Math.max(0,st.te-est),proj=est>0?rem*tot/est:Infinity;
+  if(!(st.te>0))return{lv:0,t2:0,txt:"Apuração em andamento. <b>"+n[0]+"</b> lidera com "+fmt(st.share[order[0]])+"%."}; /* sem eleitorado total não há como projetar */
   if(st.pct>=99.995){
     var el=-1,two=[];
     order.forEach(function(i){var o=st.offStatus[i];if(o==="Eleito")el=i;if(o==="2º turno")two.push(i);});
@@ -690,7 +717,7 @@ function updateUI(){
   $("modechip").textContent=live?(st.stale?"TSE · último dado":(st.pct>0?"Ao vivo · TSE":"Aguardando apuração")):"Aguardando";
   $("modechip").className="mode"+(live&&!st.stale&&st.pct>0?" live":"");
   $("modenote").textContent=live?("Dados oficiais do TSE, gerados em "+(st.updated||"--")+". Resultado parcial até 100% das urnas."+(st.stale?" O TSE não respondeu; mostrando o último dado recebido.":"")):
-    (st.waitErr?"Sem resposta do TSE. Esta página tenta de novo sozinha a cada 30 segundos.":"Esta página atualiza sozinha assim que o TSE publicar as primeiras urnas.");
+    (untilStart()>0?"Nenhum dado é consultado antes do início da divulgação. A página começa a atualizar sozinha às 17h.":(st.waitErr?"Sem resposta do TSE. Esta página tenta de novo sozinha a cada 30 segundos.":"Esta página atualiza sozinha assim que o TSE publicar as primeiras urnas."));
   if(live&&!st.podium&&st.pct>POD_MIN&&!canPod)$("modenote").textContent+=" O pódio será liberado com 99,99% das urnas: a diferença entre o 1º e o 2º ainda está dentro da margem de incerteza.";
   if(st.podium)$("modenote").textContent="Pódio com "+fmt(st.pct)+"% das urnas apuradas: os dois primeiros colocados até agora. Resultado parcial; só o TSE declara o resultado oficial.";
 }
@@ -800,8 +827,9 @@ resize();
 var lastT=performance.now(),tmp=new THREE.Vector3();
 function frame(now){
   requestAnimationFrame(frame);
-  var dt=Math.min(0.05,(now-lastT)/1000);lastT=now;
-  var tg=targets(),kk=1-Math.exp(-dt*1.8);
+  var dtReal=Math.min(1,Math.max(0,(now-lastT)/1000)),dt=Math.min(0.05,dtReal);lastT=now;
+  /* deslocamento na pista usa o tempo real (não o número de quadros): celulares lentos chegam à posição no mesmo tempo */
+  var tg=targets(),kk=1-Math.exp(-dtReal*1.8);
   runners.forEach(function(r,i){
     if(st.podium&&rankOf[i]<2){podiumPose(r,rankOf[i],now/1000);return;}
     r.arms[0].sh.rotation.z=0;r.arms[1].sh.rotation.z=0;

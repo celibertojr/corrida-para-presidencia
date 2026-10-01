@@ -4,12 +4,15 @@
 //
 // Variáveis de ambiente opcionais (Pages > Settings > Environment variables):
 //   TSE_URL = "..."   sobrescreve a URL do JSON (útil se o TSE mudar o caminho)
+//   TSE_START = "..."  início da divulgação (ISO 8601). Antes disso o Worker NÃO consulta o TSE.
+//                      Padrão: 2026-10-04T20:00:00Z (domingo, 4/10, 17h de Brasília).
 
 const UPSTREAM = {
   // Padrão dos arquivos de 2026: /dados/<uf>/<uf>-c0001-e<eleição com 6 dígitos>-u.json
   oficial: "https://resultados.tse.jus.br/oficial/ele2026/6257/dados/br/br-c0001-e006257-u.json",
 };
 
+const START_DEFAULT = "2026-10-04T20:00:00Z"; // 17h de Brasília (UTC-3)
 const FRESH = 20;   // segundos em que uma resposta boa é servida sem consultar o TSE
 const STALE = 3600; // segundos em que a última resposta boa fica de reserva
 const MISS = 60;    // segundos de cache para "ainda não publicado" (evita rajada de 404 no TSE)
@@ -37,22 +40,27 @@ function normalize(raw, src) {
   const carg = (raw.carg || []).find((c) => String(c.cd) === "1") || (raw.carg || [])[0];
   const list = [];
   collect(carg ? [carg] : [], list);
-  const cands = list
+  const s = raw.s || {}, e = raw.e || {}, v = raw.v || {};
+  const pct = (a, b) => { const x = num(a); if (Number.isFinite(x) && x >= 0 && x <= 100) return x; const y = num(b); return Number.isFinite(y) && y >= 0 && y <= 100 ? y : NaN; };
+  let cands = list
     .map((c) => ({
       n: parseInt(c.n, 10),
       nm: c.nmu || c.nm || "",
-      vap: num(c.vap),                       // votos apurados
-      pvap: num(c.pvapn !== undefined ? c.pvapn : c.pvap), // % que o site do TSE exibe
-      dvt: c.dvt || "",                      // "Válido", "Anulado", "Anulado sub judice"
-      stt: c.st || "",                       // "Eleito", "2º turno", "Não eleito"...
+      vap: num(c.vap),                        // votos apurados
+      pvap: pct(c.pvap, c.pvapn),             // % que o site do TSE exibe ("41,23")
+      dvt: c.dvt || "",                       // não existe mais no arquivo de 2026; mantido por compatibilidade
+      stt: c.st || (c.e === "s" ? "Eleito" : ""), // "Eleito", "2º turno", "Não eleito"...
     }))
     .filter((c) => Number.isFinite(c.n) && Number.isFinite(c.vap));
-  const s = raw.s || {}, e = raw.e || {}, v = raw.v || {};
-  const pst = num(s.pstn !== undefined ? s.pstn : s.pst); // % de seções (urnas) totalizadas
+  // Se algum percentual vier vazio, calcula a partir dos votos (base: votos válidos)
+  const base = num(v.vvc) > 0 ? num(v.vvc) : cands.reduce((a, c) => a + c.vap, 0);
+  cands = cands.map((c) => Number.isFinite(c.pvap) ? c : Object.assign(c, { pvap: base > 0 ? (100 * c.vap) / base : 0 }));
+  let pst = pct(s.pst, s.pstn); // % de seções (urnas) totalizadas
+  if (!Number.isFinite(pst) && num(s.ts) > 0 && Number.isFinite(num(s.st))) pst = (100 * num(s.st)) / num(s.ts);
   const out = {
     ok: cands.length > 0 && Number.isFinite(pst),
     src: src,
-    generated: [raw.dt, raw.ht].filter(Boolean).join(" "),
+    generated: ([raw.dt, raw.ht].filter(Boolean).join(" ") || [raw.dg, raw.hg].filter(Boolean).join(" ")),
     pst: pst,
     ts: num(s.ts), st: num(s.st),          // seções totais / totalizadas
     te: num(e.te), est: num(e.est),        // eleitorado total / das seções totalizadas
@@ -72,6 +80,11 @@ function json(body, ttl, status) {
       "access-control-allow-origin": "*",
     },
   });
+}
+
+function startMs(env) {
+  const t = Date.parse(env.TSE_START || START_DEFAULT);
+  return Number.isFinite(t) ? t : Date.parse(START_DEFAULT);
 }
 
 function pickUrl(env) {
@@ -105,9 +118,18 @@ async function resultado(request, env, ctx) {
     // cf.cacheTtlByStatus: o cache da Cloudflare também segura a resposta do TSE entre isolates
     const r = await fetch(up.url, {
       headers: { accept: "application/json" },
-      cf: { cacheTtlByStatus: { "200-299": FRESH, "404": MISS, "403": MISS, "500-599": 0 } },
+      cf: { cacheTtlByStatus: { "200-299": FRESH, "404": MISS, "403": 0, "429": 0, "500-599": 0 } },
     });
-    if (r.status === 404 || r.status === 403) {
+    if (r.status === 403 || r.status === 429) {
+      // TSE recusou (bloqueio ou excesso de requisições): mostra o último dado bom, ou avisa que não respondeu
+      if (MEM.data) return json(Object.assign({}, MEM.data, { stale: true }), FAIL);
+      const reserva = await cache.match(staleKey);
+      if (reserva) { const j = await reserva.json(); j.stale = true; return json(j, FAIL); }
+      const resp = json({ ok: false, error: "blocked", status: r.status, src: up.src }, MISS);
+      keep(freshKey, resp, MISS);
+      return resp;
+    }
+    if (r.status === 404) {
       const reserva = await cache.match(staleKey);
       if (reserva) { const j = await reserva.json(); j.stale = true; return json(j, FAIL); }
       if (MEM.data) return json(Object.assign({}, MEM.data, { stale: true }), FAIL);
@@ -139,13 +161,19 @@ async function resultado(request, env, ctx) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/resultado") {
+    if (url.pathname === "/api/resultado" || url.pathname === "/api/verificar") {
       if (request.method !== "GET" && request.method !== "HEAD") return new Response("Método não permitido", { status: 405 });
+      // Antes do início da divulgação não há o que buscar: responde sem consultar o TSE.
+      // /api/verificar ignora o horário (uso manual, para conferir que a leitura do TSE funciona).
+      const start = startMs(env), falta = start - Date.now();
+      if (url.pathname === "/api/resultado" && falta > 0) {
+        return json({ ok: false, error: "not_started", start: new Date(start).toISOString() }, Math.max(1, Math.min(300, Math.floor(falta / 1000))));
+      }
       return resultado(request, env, ctx);
     }
     if (url.pathname === "/api/status") {
       const up = pickUrl(env);
-      return json({ upstream: up.url, src: up.src, fresh: FRESH }, 0);
+      return json({ upstream: up.url, src: up.src, fresh: FRESH, start: new Date(startMs(env)).toISOString(), started: Date.now() >= startMs(env) }, 0);
     }
     return env.ASSETS.fetch(request); // demais rotas: arquivos do site
   },
