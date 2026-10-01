@@ -39,7 +39,7 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
 .urnas{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;min-height:0}
 .urnas:empty{display:none}
 .nm .tag.lean{background:none;color:var(--gold);border:1px solid var(--gold);padding:0 4px}
-.rank{position:absolute;right:16px;top:164px;width:272px;max-height:calc(100% - 290px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);overflow:hidden}
+.rank{position:absolute;right:16px;top:164px;width:272px;max-height:calc(100% - 330px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);overflow:hidden}
 .rank{transition:transform .28s ease,opacity .28s ease}
 .rank.off{transform:translateX(calc(100% + 24px));opacity:0;visibility:hidden;pointer-events:none;transition:transform .28s ease,opacity .28s ease,visibility 0s linear .28s}
 .rhead{display:flex;align-items:center;justify-content:space-between}
@@ -61,6 +61,9 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
 .pc{font:800 22px/1 var(--disp);font-variant-numeric:tabular-nums}
 .more{display:none;margin:0 6px 8px;padding:6px;border-radius:6px;background:rgba(255,255,255,.08);border:1px solid var(--line);cursor:pointer}
 .ctrl{position:absolute;left:16px;right:16px;bottom:12px;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.aviso{margin:0;font-size:10px;line-height:1.35;color:var(--dim);background:var(--panel);padding:4px 10px;border-radius:6px;max-width:760px;box-sizing:border-box;pointer-events:auto;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.aviso a{color:inherit;text-decoration:underline}
+.aviso b{color:var(--fg);font-weight:600}
 .bar2{display:flex;flex-wrap:wrap;gap:8px;align-items:center;pointer-events:auto}
 .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .seg button{background:none;border:0;padding:9px 14px;cursor:pointer;font-weight:600;letter-spacing:.03em}
@@ -81,13 +84,14 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
   .top{gap:8px}
   .meter{width:100%}
   .mval{font-size:38px}
-  .rank{left:16px;right:16px;width:auto;top:auto;bottom:168px;max-height:42%}
+  .rank{left:16px;right:16px;width:auto;top:auto;bottom:252px;max-height:36%}
   .rank.off{transform:translateY(24px)}
   #rows li:not(.t3){display:none}
   .rank.open #rows li{display:grid}
   .more{display:block}
   .scrub{min-width:100%;order:3}
   .note{font-size:11px}
+  .aviso{font-size:9.5px}
 }
 @media (max-width:760px) and (max-height:640px){.status{display:none}.rank{display:none}}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}.rank{transition:none}}
@@ -123,6 +127,7 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
       </div>
       <button type="button" class="btn" id="tglrank" aria-controls="rank" aria-expanded="false"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1 2h12v2H1zM1 6h12v2H1zM1 10h12v2H1z"/></svg>Classificação</button>
     </div>
+    <p class="aviso"><b>Aviso:</b> site independente, sem qualquer vínculo com o Tribunal Superior Eleitoral (TSE), com candidatos ou partidos. Os números vêm da divulgação do TSE, mas podem ter atraso ou falhas, e as indicações de tendência são apenas estimativas. Este painel não declara vencedores: para saber quem foi eleito, use somente as fontes oficiais do TSE (<a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">resultados.tse.jus.br</a>).</p>
   </footer>
 </div>
 
