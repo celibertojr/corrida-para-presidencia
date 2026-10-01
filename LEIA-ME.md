@@ -11,7 +11,7 @@ Só usa dados reais do TSE; não há simulação. Antes da apuração os corredo
 
 ## Publicar (Cloudflare Workers, grátis)
 1. Cloudflare > Computação > Workers e Pages > Criar > Importar um repositório > `corrida-para-presidencia`.
-2. Nome do projeto: `corrida-para-presidencia`. Comando da build: vazio. Comando de implantação: `npx wrangler deploy`. Implantar.
+2. Nome do projeto: `corridaparapresidencia`. Comando da build: vazio. Comando de implantação: `npx wrangler deploy`. Implantar.
 3. Domínio próprio (recomendado, deixa o cache de borda funcionar e o site atender muitos acessos): no Worker, *Configurações > Domínios e rotas > Adicionar > Domínio personalizado*, por exemplo `corrida.seudominio.com`.
 4. Teste: `python3 verificar_site.py https://SEU-ENDERECO`.
 
