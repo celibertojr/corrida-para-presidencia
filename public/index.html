@@ -128,7 +128,7 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
         <button type="button" data-cam="lead" aria-pressed="false">Seguir</button>
         <button type="button" data-cam="finish" aria-pressed="false">Chegada</button>
       </div>
-      <button type="button" class="btn" id="tglrank" aria-controls="rank" aria-expanded="false"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1 2h12v2H1zM1 6h12v2H1zM1 10h12v2H1z"/></svg>Classificação</button>
+      <button type="button" class="btn" id="tglrank" aria-controls="rank" aria-expanded="false" disabled title="Disponível quando o TSE enviar os primeiros dados da apuração"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1 2h12v2H1zM1 6h12v2H1zM1 10h12v2H1z"/></svg>Classificação</button>
       <button type="button" class="btn" id="btnpod" disabled aria-pressed="false" title="Disponível com mais de 99% das urnas apuradas. Se o 1º e o 2º estiverem estatisticamente empatados, só com 99,99%."><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1h8v3c0 2-1.5 3.5-3 3.8V10h2v2H4v-2h2V7.8C4.5 7.5 3 6 3 4zM1 2h2v2.5C2 4.5 1 3.5 1 2.5zM11 2h2v.5c0 1-1 2-2 2z"/></svg><span id="podtxt">Vencedores</span></button>
     </div>
     <p class="aviso"><b>Aviso:</b> site independente, sem qualquer vínculo com o Tribunal Superior Eleitoral (TSE), com candidatos ou partidos. Os números vêm da divulgação do TSE, mas podem ter atraso ou falhas, e as indicações de tendência são apenas estimativas. Para saber quem foi eleito, use somente as fontes oficiais do TSE (<a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">resultados.tse.jus.br</a>).</p>
@@ -657,6 +657,7 @@ function selectRunner(i){
   if(st.sel>=0)setCam("lead");
   dirty=true;
 }
+var rankReady=false;
 function updateUI(){
   var an=analyze(),live=st.mode==="live";
   $("pct").textContent=fmt(st.pct)+"%";
@@ -677,6 +678,12 @@ function updateUI(){
     r.label.sprite.visible=show;r.root.visible=!st.absent[i]&&(!st.podium||rankOf[i]<2);
     if(show){var tx=fmt(st.share[i])+"%";if(tx!==r.label.last)r.label.draw(tx);}
   });
+  /* Classificação: só depois que chegar qualquer dado real de apuração (mesmo que mínimo) */
+  var canRank=live&&st.pct>0;
+  $("tglrank").disabled=!canRank;
+  if(!canRank&&!$("rank").classList.contains("off"))setRank(false,false);
+  if(canRank&&!rankReady){var sv="0";try{sv=localStorage.getItem("rankOpen")||"0";}catch(e){}if(sv==="1")setRank(true,false);}
+  rankReady=canRank;
   var canPod=live&&podiumReady();
   $("btnpod").disabled=!canPod;
   if(!canPod&&st.podium)setPodium(false);
