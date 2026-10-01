@@ -266,22 +266,27 @@ addRing(RO,RO+3,new THREE.MeshStandardMaterial({color:0x2f7a3a,roughness:1}),0.0
     var p=new THREE.Mesh(new THREE.BoxGeometry(0.9,12,0.9),dark);p.position.set(FIN,6,zc+s*span/2);scene.add(p);
   });
   var beam=new THREE.Mesh(new THREE.BoxGeometry(1.2,3.6,span+1),dark);beam.position.set(FIN,11.6,zc);scene.add(beam);
-  /* Faixa de chegada: a textura tem a MESMA proporção do painel (evita esticar o texto) e o texto é ajustado à largura */
+  /* Faixas do pórtico: lado da CHEGADA (dourado) e lado da SAÍDA (verde). Mesma linha no chão (1 volta = 100% das urnas).
+     A textura tem a proporção do painel (não estica) e o texto se ajusta à largura. */
   var BW=2048,BH=Math.max(120,Math.round(BW*3.2/(span+0.6)));
-  function drawBanner(x,w,h){
-    x.fillStyle="#ffd23f";x.fillRect(0,0,w,h);
-    x.fillStyle="#1a1300";x.textAlign="center";x.textBaseline="middle";
+  function drawBanner(x,w,h,txt,bg,fg){
+    x.fillStyle=bg;x.fillRect(0,0,w,h);
+    x.fillStyle=fg;x.textAlign="center";x.textBaseline="middle";
     var fs=Math.round(h*0.62);x.font="800 "+fs+"px "+DISP;
-    var tw=x.measureText(TXT_FIN).width,maxw=w*0.9;
+    var tw=x.measureText(txt).width,maxw=w*0.9;
     if(tw>maxw){fs=Math.floor(fs*maxw/tw);x.font="800 "+fs+"px "+DISP;}
-    x.fillText(TXT_FIN,w/2,h/2+fs*0.04);
+    x.fillText(txt,w/2,h/2+fs*0.04);
   }
-  var TXT_FIN="CHEGADA · 100% DAS URNAS";
-  var bn=canvasTex(BW,BH,drawBanner);
-  bn.redraw=function(){drawBanner(bn.ctx,bn.canvas.width,bn.canvas.height);bn.tex.needsUpdate=true;};
-  fontRedraws.push(bn.redraw);
-  [-1,1].forEach(function(s){
-    var pl=new THREE.Mesh(new THREE.PlaneGeometry(span+0.6,3.2),new THREE.MeshBasicMaterial({map:bn.tex}));
+  function mkBanner(txt,bg,fg){
+    var t=canvasTex(BW,BH,function(x,w,h){drawBanner(x,w,h,txt,bg,fg);});
+    t.redraw=function(){drawBanner(t.ctx,t.canvas.width,t.canvas.height,txt,bg,fg);t.tex.needsUpdate=true;};
+    fontRedraws.push(t.redraw);return t;
+  }
+  var bnFin=mkBanner("CHEGADA · 100% DAS URNAS","#ffd23f","#1a1300");
+  var bnIni=mkBanner("SAÍDA · 0% DAS URNAS","#5fd38d","#06210f");
+  /* Câmera "Chegada" e arquibancada de chegada ficam do lado +x: essa face mostra CHEGADA; a face -x (atrás dos corredores na largada) mostra SAÍDA */
+  [[-1,bnIni],[1,bnFin]].forEach(function(p){
+    var s=p[0],pl=new THREE.Mesh(new THREE.PlaneGeometry(span+0.6,3.2),new THREE.MeshBasicMaterial({map:p[1].tex}));
     pl.position.set(FIN+s*0.65,11.6,zc);pl.rotation.y=s*Math.PI/2;scene.add(pl);
   });
 })();
