@@ -85,22 +85,7 @@ flowchart LR
 └── verificar_paleta.py     # confere contraste e daltonismo das cores
 ```
 
-## 🚀 Publicar (grátis)
-
-1. No painel da Cloudflare: **Computação → Workers e Pages → Criar aplicativo → Importar um repositório** e escolha este repositório.
-2. **Nome do projeto**: `corridaparapresidencia` (igual ao `name` do `wrangler.jsonc`).
-3. **Comando da build**: vazio. **Comando de implantação**: `npx wrangler deploy`.
-4. Clique em **Implantar**. A cada *commit* na `main`, a Cloudflare publica a nova versão em cerca de 1 minuto.
-
-Teste o site publicado (só biblioteca padrão do Python):
-
-```bash
-python3 verificar_site.py https://SEU-ENDERECO.workers.dev
-```
-
-Também vale abrir `/api/status` (qual URL do TSE está em uso) e `/api/resultado` (dados normalizados, ou `not_published` se o TSE ainda não publicou).
-
-### Se o TSE mudar o endereço do arquivo
+## 🔧 Se o TSE mudar o endereço do arquivo
 
 Crie a variável `TSE_URL` no Worker (*Configurações → Variáveis e segredos*) com a URL correta e reimplante. Nenhum código precisa mudar.
 
