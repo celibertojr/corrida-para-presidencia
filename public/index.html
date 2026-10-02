@@ -82,6 +82,7 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
 .note{font-size:12px;color:var(--fg);background:var(--panel);padding:5px 10px;border-radius:6px;width:fit-content;max-width:100%;box-sizing:border-box;pointer-events:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .mode{display:inline-block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.1);color:var(--fg);margin-right:6px}
 .mode.live{background:var(--ok);color:#06210f}
+.scrim{position:absolute;left:0;top:0;width:min(1000px,100%);height:180px;pointer-events:none;opacity:0;background:radial-gradient(ellipse 100% 100% at 0 0,rgba(6,12,28,.62),rgba(6,12,28,.32) 50%,rgba(6,12,28,0) 78%);transition:opacity 2s linear}
 #fail{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);display:none;max-width:min(520px,calc(100% - 32px));box-sizing:border-box;text-align:center;padding:14px 18px;font-size:14px;line-height:1.4;background:var(--panel);border:1px solid var(--line);border-radius:10px}
 @media (max-width:760px){
   .top{gap:8px}
@@ -102,6 +103,7 @@ h1{margin:2px 0 0;font:800 clamp(34px,6vw,58px)/.95 var(--disp);letter-spacing:.
 
 <div id="app">
   <div id="stage"></div>
+  <div class="scrim" id="scrim" aria-hidden="true"></div>
   <div id="fail" role="status">O 3D não pôde ser iniciado neste navegador. Os números e a classificação continuam atualizando normalmente.</div>
   <header class="top">
     <div class="brand">
@@ -211,22 +213,47 @@ function canvasTex(w,h,draw){
   var t=new THREE.CanvasTexture(c);t.anisotropy=4;return {canvas:c,ctx:x,tex:t};
 }
 
-/* Céu noturno com estrelas */
+/* Céu que acompanha a hora do visitante: noite, amanhecer, dia, pôr do sol e anoitecer */
+var skyTex,starsMat,sunSprite;
+var SKY_K=[ /* h = hora local; cores do céu (topo, meio, horizonte, base), névoa, luz ambiente, sol, estrelas, chão, refletores, faixa do título */
+ {h:0,    top:"#030816",mid:"#0d1c3a",hor:"#274168",bot:"#5b5f78",fog:"#0b1428",hs:"#c9dcff",hg:"#1d2b1c",hi:0.85,sc:"#fff1dc",si:0.95,st:1,   gr:"#0f1a2c",lamp:1,scrim:0},
+ {h:5,    top:"#030816",mid:"#0d1c3a",hor:"#274168",bot:"#5b5f78",fog:"#0b1428",hs:"#c9dcff",hg:"#1d2b1c",hi:0.85,sc:"#fff1dc",si:0.95,st:1,   gr:"#0f1a2c",lamp:1,scrim:0},
+ {h:5.75, top:"#0f1d44",mid:"#2c3f73",hor:"#9a6f8c",bot:"#d99a7e",fog:"#3a3f5c",hs:"#c9d4ff",hg:"#2a3324",hi:0.8, sc:"#ffc59a",si:0.75,st:0.4, gr:"#1d2733",lamp:1,scrim:0.3},
+ {h:6.5,  top:"#3d6fb8",mid:"#8db3e0",hor:"#f8c08a",bot:"#fde0b8",fog:"#c9b9b0",hs:"#ffe7cf",hg:"#3a4a2c",hi:0.9, sc:"#ffd2a1",si:1.0, st:0,   gr:"#4a5c45",lamp:0,scrim:0.9},
+ {h:8,    top:"#2f78d6",mid:"#6fb0ee",hor:"#bfe1fb",bot:"#e3f1fb",fog:"#bcd8f0",hs:"#e6f1ff",hg:"#3f5a30",hi:0.95,sc:"#fff6e6",si:1.15,st:0,   gr:"#4f6847",lamp:0,scrim:1},
+ {h:16.5, top:"#2f78d6",mid:"#6fb0ee",hor:"#bfe1fb",bot:"#e3f1fb",fog:"#bcd8f0",hs:"#e6f1ff",hg:"#3f5a30",hi:0.95,sc:"#fff6e6",si:1.15,st:0,   gr:"#4f6847",lamp:0,scrim:1},
+ {h:17.5, top:"#3567b0",mid:"#8aa7d6",hor:"#ffc58a",bot:"#ffe0b0",fog:"#d8c0a8",hs:"#ffe2c4",hg:"#3a4a2c",hi:0.92,sc:"#ffc98f",si:1.05,st:0,   gr:"#4d5e46",lamp:1,scrim:0.9},
+ {h:18.25,top:"#1c2d63",mid:"#5a4f8a",hor:"#ff8a5c",bot:"#ffb07a",fog:"#6a4f6a",hs:"#e7d0ff",hg:"#2a3324",hi:0.85,sc:"#ffa070",si:0.85,st:0.2, gr:"#2a3138",lamp:1,scrim:0.5},
+ {h:19,   top:"#081332",mid:"#16285a",hor:"#4a4a7a",bot:"#7a6a86",fog:"#141c38",hs:"#c9dcff",hg:"#1d2b1c",hi:0.85,sc:"#fff1dc",si:0.95,st:0.75,gr:"#141e30",lamp:1,scrim:0.1},
+ {h:20,   top:"#030816",mid:"#0d1c3a",hor:"#274168",bot:"#5b5f78",fog:"#0b1428",hs:"#c9dcff",hg:"#1d2b1c",hi:0.85,sc:"#fff1dc",si:0.95,st:1,   gr:"#0f1a2c",lamp:1,scrim:0},
+ {h:24,   top:"#030816",mid:"#0d1c3a",hor:"#274168",bot:"#5b5f78",fog:"#0b1428",hs:"#c9dcff",hg:"#1d2b1c",hi:0.85,sc:"#fff1dc",si:0.95,st:1,   gr:"#0f1a2c",lamp:1,scrim:0}
+];
+var skyNow=SKY_K[0];
 (function(){
-  var s=canvasTex(8,512,function(x,w,h){
-    var g=x.createLinearGradient(0,0,0,h);
-    g.addColorStop(0,"#030816");g.addColorStop(.55,"#0d1c3a");g.addColorStop(.85,"#274168");g.addColorStop(1,"#5b5f78");
-    x.fillStyle=g;x.fillRect(0,0,w,h);
-  });
-  var dome=new THREE.Mesh(new THREE.SphereGeometry(1000,32,16),new THREE.MeshBasicMaterial({map:s.tex,side:THREE.BackSide,fog:false}));
+  skyTex=canvasTex(8,512,function(x,w,h){drawSkyGrad(x,w,h,SKY_K[0]);});
+  var dome=new THREE.Mesh(new THREE.SphereGeometry(1000,32,16),new THREE.MeshBasicMaterial({map:skyTex.tex,side:THREE.BackSide,fog:false}));
   scene.add(dome);
   var pos=[],i;for(i=0;i<420;i++){var az=Math.random()*Math.PI*2,el=0.12+Math.random()*1.2,r=950;pos.push(Math.cos(az)*Math.cos(el)*r,Math.sin(el)*r,Math.sin(az)*Math.cos(el)*r);}
   var g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
-  scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:2.2,sizeAttenuation:false,fog:false})));
+  starsMat=new THREE.PointsMaterial({color:0xffffff,size:2.2,sizeAttenuation:false,fog:false,transparent:true,opacity:1});
+  scene.add(new THREE.Points(g,starsMat));
+  /* disco do sol */
+  var sd=canvasTex(128,128,function(x,w,h){
+    var gr=x.createRadialGradient(64,64,0,64,64,64);
+    gr.addColorStop(0,"rgba(255,255,245,1)");gr.addColorStop(0.32,"rgba(255,248,220,1)");gr.addColorStop(0.42,"rgba(255,226,160,.55)");gr.addColorStop(1,"rgba(255,210,140,0)");
+    x.fillStyle=gr;x.fillRect(0,0,w,h);
+  });
+  sunSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:sd.tex,fog:false,depthWrite:false,transparent:true}));
+  sunSprite.scale.set(150,150,1);sunSprite.visible=false;scene.add(sunSprite);
 })();
+function drawSkyGrad(x,w,h,k){
+  var g=x.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,k.top);g.addColorStop(.55,k.mid);g.addColorStop(.85,k.hor);g.addColorStop(1,k.bot);
+  x.fillStyle=g;x.fillRect(0,0,w,h);
+}
 
 /* Luzes */
-scene.add(new THREE.HemisphereLight(0xc9dcff,0x1d2b1c,0.85));
+var hemi=new THREE.HemisphereLight(0xc9dcff,0x1d2b1c,0.85);scene.add(hemi);
 var sun=new THREE.DirectionalLight(0xfff1dc,0.95);
 sun.position.set(50,130,70);sun.castShadow=true;
 sun.shadow.mapSize.set(2048,2048);
@@ -235,8 +262,11 @@ sun.shadow.camera.near=20;sun.shadow.camera.far=320;sun.shadow.bias=-0.0006;
 scene.add(sun);
 
 /* Chão */
-var ground=new THREE.Mesh(new THREE.CircleGeometry(700,48),new THREE.MeshStandardMaterial({color:0x0f1a2c,roughness:1}));
+var groundMat=new THREE.MeshStandardMaterial({color:0x0f1a2c,roughness:1});
+var ground=new THREE.Mesh(new THREE.CircleGeometry(700,48),groundMat);
 ground.rotation.x=-Math.PI/2;ground.position.y=-0.06;scene.add(ground);
+
+var lampMat=new THREE.MeshBasicMaterial({color:0xfff6d8}); /* painéis dos refletores (acesos à noite) */
 
 /* ---------- Pista ---------- */
 function fillStad(p,R){
@@ -341,7 +371,7 @@ var crowdGroups=[];
     var grp=new THREE.Group();grp.add(bm);grp.add(hm);scene.add(grp);crowdGroups.push(grp);
   }
   /* mastros de iluminação */
-  var pole=new THREE.MeshStandardMaterial({color:0x1b2436,roughness:.7}),lamp=new THREE.MeshBasicMaterial({color:0xfff6d8});
+  var pole=new THREE.MeshStandardMaterial({color:0x1b2436,roughness:.7}),lamp=lampMat;
   [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(function(s){
     var x=s[0]*(L/2+RO-6),z=s[1]*(RO+16);
     var m=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.8,44,8),pole);m.position.set(x,22,z);scene.add(m);
@@ -815,6 +845,45 @@ var savedRank="0";try{savedRank=localStorage.getItem("rankOpen")||"0";}catch(e){
 setRank(savedRank==="1",false);
 pollLive();setInterval(pollLive,POLL_MS);document.addEventListener("visibilitychange",function(){if(!document.hidden)pollLive();});
 document.getElementById("app").setAttribute("data-mode","wait");
+
+/* ---------- Céu conforme a hora ---------- */
+function horaLocal(){
+  if(typeof window.CORRIDA_HORA==="number")return ((window.CORRIDA_HORA%24)+24)%24; /* só para testes */
+  var d=new Date();return d.getHours()+d.getMinutes()/60+d.getSeconds()/3600;
+}
+var cA=new THREE.Color(),cB=new THREE.Color();
+function mixHex(a,b,t){cA.set(a);cB.set(b);return "#"+cA.lerp(cB,t).getHexString();}
+function skyAt(h){
+  var i=0;while(i<SKY_K.length-2&&h>=SKY_K[i+1].h)i++;
+  var A=SKY_K[i],B=SKY_K[i+1],t=B.h>A.h?clamp((h-A.h)/(B.h-A.h),0,1):0,o={h:h};
+  ["top","mid","hor","bot","fog","hs","hg","sc","gr"].forEach(function(k){o[k]=mixHex(A[k],B[k],t);});
+  ["hi","si","st","lamp","scrim"].forEach(function(k){o[k]=A[k]+(B[k]-A[k])*t;});
+  return o;
+}
+var lastSkyKey="";
+function updateSky(force){
+  var h=horaLocal(),key=Math.round(h*30); /* recalcula a cada 2 minutos de relógio */
+  if(!force&&key===lastSkyKey)return;lastSkyKey=key;
+  var k=skyAt(h);skyNow=k;
+  drawSkyGrad(skyTex.ctx,skyTex.canvas.width,skyTex.canvas.height,k);skyTex.tex.needsUpdate=true;
+  scene.fog.color.set(k.fog);
+  hemi.color.set(k.hs);hemi.groundColor.set(k.hg);hemi.intensity=k.hi;
+  sun.color.set(k.sc);sun.intensity=k.si;
+  starsMat.opacity=k.st;starsMat.visible=k.st>0.02;
+  groundMat.color.set(k.gr);
+  lampMat.color.set(mixHex("#7d8794","#fff6d8",k.lamp));
+  /* direção da luz: arco do sol entre 6h e 18h; à noite, luz alta dos refletores do estádio */
+  var a=clamp((h-6)/12,0,1)*Math.PI,day=clamp(Math.min(h-5.5,18.5-h),0,1);
+  var dx=150*Math.cos(a),dy=45+110*Math.sin(a);
+  sun.position.set(50+(dx-50)*day,130+(dy-130)*day,70);
+  /* disco do sol no céu */
+  var el=Math.sin(a)*1.05-0.04,vis=h>5.6&&h<18.4;
+  sunSprite.visible=vis;
+  if(vis){sunSprite.position.set(900*Math.cos(a)*Math.cos(el),900*Math.sin(el)+40,-260);sunSprite.material.color.set(mixHex("#ffb070","#ffffff",clamp(Math.sin(a)*2.2,0,1)));}
+  var sc=document.getElementById("scrim");if(sc)sc.style.opacity=k.scrim.toFixed(2);
+}
+updateSky(true);
+setInterval(function(){updateSky(false);},20000);
 
 /* ---------- Loop ---------- */
 function resize(){
