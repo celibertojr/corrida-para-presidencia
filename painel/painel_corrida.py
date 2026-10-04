@@ -29,6 +29,7 @@ do macOS; no Linux: sudo apt install python3-tk).
 
 import argparse
 import json
+import os
 import queue
 import ssl
 import threading
@@ -47,6 +48,84 @@ from tkinter import font as tkfont
 URL_TSE = "https://resultados.tse.jus.br/oficial/ele2026/6257/dados/br/br-c0001-e006257-u.json"
 URL_TSE_PAGINA = "https://resultados.tse.jus.br"
 URL_SITE = "https://corridaparapresidencia.eleicoes.workers.dev"
+WORKER_NOME = "corridaparapresidencia"     # nome do Worker na Cloudflare
+COTA_DIA = 100_000                         # requisições/dia do plano grátis (zera 00h UTC = 21h de Brasília)
+CONSULTAS_POR_MINUTO = 2                   # cada página aberta consulta o servidor a cada 30 s
+GQL_URL = "https://api.cloudflare.com/client/v4/graphql"
+GQL_INTERVALO = 60                         # segundos entre consultas às estatísticas da Cloudflare
+# Token e Account ID da Cloudflare: arquivo painel_config.json (ao lado deste programa) ou
+# variáveis de ambiente CF_API_TOKEN e CF_ACCOUNT_ID. O token precisa só de "Account Analytics: Read".
+ARQ_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "painel_config.json")
+
+
+def ler_config():
+    cfg = {}
+    try:
+        with open(ARQ_CONFIG, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        pass
+    tok = os.environ.get("CF_API_TOKEN") or cfg.get("cf_api_token", "")
+    acc = os.environ.get("CF_ACCOUNT_ID") or cfg.get("cf_account_id", "")
+    return tok.strip(), acc.strip()
+
+
+# Requisições que o PRÓPRIO painel faz ao site: descontadas da estimativa de público
+_proprias = []
+_proprias_lock = threading.Lock()
+
+
+def marcar_propria():
+    with _proprias_lock:
+        _proprias.append(time.time())
+        corte = time.time() - 3 * 3600
+        while _proprias and _proprias[0] < corte:
+            _proprias.pop(0)
+
+
+def proprias_entre(t0, t1):
+    with _proprias_lock:
+        return sum(1 for t in _proprias if t0 <= t <= t1)
+
+
+def consultar_publico(token, conta):
+    """Lê da Cloudflare quantas requisições o Worker recebeu e estima o público.
+
+    Pessoas online ≈ requisições por minuto ÷ 2 (cada página aberta consulta 2×/min),
+    numa janela de 5 min que termina 2 min atrás (as estatísticas chegam com ~1–2 min de atraso).
+    """
+    agora = datetime.now(timezone.utc)
+    fim = agora - timedelta(minutes=2)
+    ini = fim - timedelta(minutes=5)
+    dia = agora.replace(hour=0, minute=0, second=0, microsecond=0)  # a cota grátis zera às 00h UTC
+    iso = lambda d: d.strftime("%Y-%m-%dT%H:%M:%SZ")
+    q = """query($acc:String!,$w:String!,$a:Time!,$b:Time!,$d:Time!,$z:Time!){viewer{accounts(filter:{accountTag:$acc}){
+      janela:workersInvocationsAdaptive(limit:100,filter:{scriptName:$w,datetime_geq:$a,datetime_leq:$b}){sum{requests errors}}
+      dia:workersInvocationsAdaptive(limit:100,filter:{scriptName:$w,datetime_geq:$d,datetime_leq:$z}){sum{requests errors}}}}}"""
+    corpo = json.dumps({"query": q, "variables": {"acc": conta, "w": WORKER_NOME, "a": iso(ini), "b": iso(fim), "d": iso(dia), "z": iso(agora)}}).encode()
+    req = urllib.request.Request(GQL_URL, data=corpo, method="POST", headers={
+        "Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT, context=CTX) as r:
+            dados = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as ex:
+        return {"ok": False, "erro": f"Cloudflare HTTP {ex.code}" + (" (token sem permissão?)" if ex.code in (401, 403) else "")}
+    except Exception as ex:
+        return {"ok": False, "erro": "sem conexão com a Cloudflare: " + str(getattr(ex, "reason", ex))[:80]}
+    if dados.get("errors"):
+        return {"ok": False, "erro": "Cloudflare: " + str(dados["errors"][0].get("message", ""))[:120]}
+    try:
+        contas = dados["data"]["viewer"]["accounts"]
+        if not contas:
+            return {"ok": False, "erro": "Account ID não encontrado para este token"}
+        soma = lambda linhas, k: sum((l.get("sum") or {}).get(k, 0) or 0 for l in (linhas or []))
+        jan, d = contas[0].get("janela"), contas[0].get("dia")
+        req_jan = soma(jan, "requests") - proprias_entre(ini.timestamp(), fim.timestamp())
+        online = max(0, req_jan) / 5 / CONSULTAS_POR_MINUTO
+        return {"ok": True, "online": online, "req_dia": soma(d, "requests"), "erros_dia": soma(d, "errors"),
+                "jan_ini": ini.astimezone(BRT).strftime("%H:%M"), "jan_fim": fim.astimezone(BRT).strftime("%H:%M")}
+    except (KeyError, TypeError) as ex:
+        return {"ok": False, "erro": "resposta inesperada da Cloudflare: " + str(ex)[:80]}
 INICIO_UTC = datetime(2026, 10, 4, 20, 0, 0, tzinfo=timezone.utc)  # 17h de Brasília
 BRT = timezone(timedelta(hours=-3))
 INTERVALO_PADRAO = 30          # segundos entre consultas, a partir das 17h
@@ -226,14 +305,14 @@ def ciclo_de_consulta(fila, arquivo_local):
         res["tse"] = {"ok": dados is not None, "ms": ms, "http": http, "dados": dados, "erro": erro}
 
     # 2) Site: /api/status (o Worker está no ar?) e /api/verificar (o Worker consegue ler o TSE?)
-    st, ms1, http1, e1 = baixar_json(URL_SITE + "/api/status")
-    ver, ms2, http2, e2 = baixar_json(URL_SITE + "/api/verificar")
+    marcar_propria(); st, ms1, http1, e1 = baixar_json(URL_SITE + "/api/status")
+    marcar_propria(); ver, ms2, http2, e2 = baixar_json(URL_SITE + "/api/verificar")
     res["site"] = {
         "status": st, "ms": ms1, "http": http1, "erro": e1,
         "verificar": ver, "ms_ver": ms2, "http_ver": http2, "erro_ver": e2,
     }
     # 3) O que a página do site está recebendo de fato (depois das 17h)
-    rs, ms3, http3, e3 = baixar_json(URL_SITE + "/api/resultado")
+    marcar_propria(); rs, ms3, http3, e3 = baixar_json(URL_SITE + "/api/resultado")
     res["site"].update({"resultado": rs, "ms_res": ms3, "erro_res": e3})
     fila.put(res)
 
@@ -263,11 +342,11 @@ class Luz:
     def __init__(self, pai, titulo, fontes):
         self.frame = tk.Frame(pai, bg=COR["card"], highlightthickness=1, highlightbackground=COR["linha"])
         self.cv = tk.Canvas(self.frame, width=34, height=34, bg=COR["card"], highlightthickness=0)
-        self.cv.grid(row=0, column=0, rowspan=2, padx=(14, 10), pady=12)
+        self.cv.grid(row=0, column=0, rowspan=2, padx=(12, 8), pady=10)
         self.bola = self.cv.create_oval(4, 4, 30, 30, fill=COR["neutro"], outline="")
         self.brilho = self.cv.create_oval(10, 9, 17, 15, fill="#ffffff", outline="", stipple="gray50")
         tk.Label(self.frame, text=titulo, bg=COR["card"], fg=COR["fraco"], font=fontes["peq_b"]).grid(row=0, column=1, sticky="sw", pady=(12, 0))
-        self.txt = tk.Label(self.frame, text="aguardando…", bg=COR["card"], fg=COR["texto"], font=fontes["med_b"], anchor="w")
+        self.txt = tk.Label(self.frame, text="aguardando…", bg=COR["card"], fg=COR["texto"], font=fontes["linha_nome"], anchor="w")
         self.txt.grid(row=1, column=1, sticky="nw")
         self.det = tk.Label(self.frame, text="", bg=COR["card"], fg=COR["fraco"], font=fontes["peq"], anchor="w", justify="left", wraplength=300)
         self.det.grid(row=2, column=0, columnspan=2, sticky="w", padx=14, pady=(0, 12))
@@ -292,6 +371,11 @@ class Painel:
         self.tendencia = {}      # última mudança de posição de cada candidato
         self.y_atual = {}        # posição vertical animada de cada linha da classificação
         self.dados = None
+        # estatísticas de público (Cloudflare): opcional, só se houver token configurado
+        self.cf_token, self.cf_conta = ler_config()
+        self.pub_fila = queue.Queue()
+        self.pub_ocupado = False
+        self.pub_prox = time.time() + 1
 
         fam = escolher_fonte(raiz, ["Segoe UI", "SF Pro Text", "Helvetica Neue", "Ubuntu", "Cantarell", "DejaVu Sans", "Arial"])
         mono = escolher_fonte(raiz, ["Cascadia Mono", "Consolas", "SF Mono", "Menlo", "DejaVu Sans Mono", "Courier New"])
@@ -346,7 +430,8 @@ class Painel:
         self.luz_site = Luz(luzes, "SITE NO AR", self.f)
         self.luz_leitura = Luz(luzes, "SITE LENDO O TSE", self.f)
         self.luz_dados = Luz(luzes, "DADOS CHEGANDO", self.f)
-        for i, l in enumerate((self.luz_tse, self.luz_site, self.luz_leitura, self.luz_dados)):
+        self.luz_publico = Luz(luzes, "PÚBLICO NO SITE", self.f)
+        for i, l in enumerate((self.luz_tse, self.luz_site, self.luz_leitura, self.luz_dados, self.luz_publico)):
             l.frame.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 10, 0))
             luzes.grid_columnconfigure(i, weight=1, uniform="luz")
 
@@ -462,6 +547,19 @@ class Painel:
                 self.lbl_prox.configure(text=f"Pré-apuração: a cada {INTERVALO_AQUECIMENTO} s · próxima em {falta_c} s")
             else:
                 self.lbl_prox.configure(text=f"Apuração: a cada {self.intervalo} s · próxima em {falta_c} s")
+        # público no site (estatísticas da Cloudflare)
+        if self.cf_token and self.cf_conta:
+            if not self.pub_ocupado and agora >= self.pub_prox:
+                self.pub_ocupado = True
+                threading.Thread(target=lambda: self.pub_fila.put(consultar_publico(self.cf_token, self.cf_conta)), daemon=True).start()
+            try:
+                while True:
+                    self._aplicar_publico(self.pub_fila.get_nowait())
+            except queue.Empty:
+                pass
+        elif not getattr(self, "_aviso_cfg", False):
+            self._aviso_cfg = True
+            self.luz_publico.definir("neutro", "Não configurado", "crie painel_config.json (veja o README)")
         # resultados prontos
         try:
             while True:
@@ -537,7 +635,7 @@ class Painel:
                 self.ultimo_gerado, self.quando_mudou = marca, time.time()
             parado = time.time() - (self.quando_mudou or time.time())
             if not comecou:
-                self.luz_dados.definir("ok", "Pronto, aguardando 17h", f"Arquivo gerado em {d['gerado'] or '—'} · {fmt_pct(d['pst'])} apurado")
+                self.luz_dados.definir("ok", "Pronto (17h)", f"Arquivo gerado em {d['gerado'] or '—'} · {fmt_pct(d['pst'])} apurado")
                 niveis.append("ok")
             elif d["final"] or (ok_num(d["pst"]) and d["pst"] >= 100):
                 self.luz_dados.definir("ok", "Apuração concluída", f"Última totalização: {d['gerado']}")
@@ -561,6 +659,26 @@ class Painel:
             self.faixa.configure(text="●  TUDO OK: TSE respondendo, site no ar e lendo os dados", bg=COR["ok"], fg="#06210f")
 
     # ---------------- números ----------------
+    def _aplicar_publico(self, p):
+        self.pub_ocupado = False
+        # mesma lógica de fases: em espera (antes das 16h30) não fica consultando
+        self.pub_prox = time.time() + GQL_INTERVALO if self._fase() != "espera" else INICIO_UTC.timestamp() - AQUECIMENTO_MIN * 60
+        if not p["ok"]:
+            self.luz_publico.definir("atencao", "Sem estatísticas", p["erro"])
+            self._registrar("Público: " + p["erro"], "atencao")
+            return
+        uso = 100 * p["req_dia"] / COTA_DIA
+        nivel = "erro" if uso >= 100 else "atencao" if uso >= 80 else "ok"
+        on = p["online"]
+        txt = "≈ 0 online" if on < 1 else f"≈ {int(round(on)):,} online".replace(",", ".")
+        det = (f"média {p['jan_ini']}–{p['jan_fim']} · hoje {fmt_int(p['req_dia'])} consultas\n"
+               f"cota grátis: {uso:.0f}% usada (zera às 21h)")
+        if p["erros_dia"]:
+            det += f" · {fmt_int(p['erros_dia'])} com erro"
+        if nivel == "erro":
+            det += "\nCOTA ESGOTADA: o site mostra o último dado até as 21h."
+        self.luz_publico.definir(nivel, txt, det)
+
     def _atualizar_numeros(self, d):
         self.lbl_pct.configure(text=fmt_pct(d["pst"]))
         self.lbl_secoes.configure(text=f"{fmt_int(d['st'])} de {fmt_int(d['ts'])} seções totalizadas")
