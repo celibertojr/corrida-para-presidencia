@@ -106,6 +106,7 @@ flowchart LR
 ├── src/
 │   └── worker.js           # /api/resultado, /api/status e /api/verificar (TSE → JSON enxuto)
 ├── docs/                   # imagens deste README
+├── painel/                 # painel de controle em Python (programa de mesa; não vai para o site)
 ├── wrangler.jsonc          # configuração do Cloudflare Workers
 ├── verificar_site.py       # teste do site publicado
 └── verificar_paleta.py     # confere contraste e daltonismo das cores
