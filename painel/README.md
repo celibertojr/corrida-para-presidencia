@@ -36,7 +36,7 @@ Para ativar:
 1. No painel da Cloudflare, clique no ícone do seu perfil → **Tokens de API** → **Criar token** → **Criar token personalizado**.
 2. Em *Permissões*, escolha **Conta → Account Analytics → Ler**. Em *Recursos da conta*, inclua a sua conta. Crie e copie o token.
 3. Copie o **ID da conta** (aparece no endereço do painel, `dash.cloudflare.com/<ID da conta>/...`, ou na página do Worker, em *ID da conta*).
-4. Na mesma pasta do `painel_corrida.py`, crie o arquivo `painel_config.json`:
+4. Na mesma pasta do `painel_corrida.py`, copie `painel_config.exemplo.json` para `painel_config.json` e preencha:
    ```json
    {"cf_api_token": "COLE_O_TOKEN_AQUI", "cf_account_id": "COLE_O_ID_DA_CONTA_AQUI"}
    ```
