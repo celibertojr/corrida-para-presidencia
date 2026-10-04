@@ -65,9 +65,14 @@ def ler_config():
             cfg = json.load(f)
     except (OSError, ValueError):
         pass
-    tok = os.environ.get("CF_API_TOKEN") or cfg.get("cf_api_token", "")
-    acc = os.environ.get("CF_ACCOUNT_ID") or cfg.get("cf_account_id", "")
-    return tok.strip(), acc.strip()
+    tok = (os.environ.get("CF_API_TOKEN") or str(cfg.get("cf_api_token", ""))).strip()
+    acc = (os.environ.get("CF_ACCOUNT_ID") or str(cfg.get("cf_account_id", ""))).strip()
+    # valores de exemplo ("COLE_...") contam como não preenchidos
+    if tok.upper().startswith("COLE"):
+        tok = ""
+    if acc.upper().startswith("COLE"):
+        acc = ""
+    return tok, acc
 
 
 # Requisições que o PRÓPRIO painel faz ao site: descontadas da estimativa de público
@@ -559,7 +564,13 @@ class Painel:
                 pass
         elif not getattr(self, "_aviso_cfg", False):
             self._aviso_cfg = True
-            self.luz_publico.definir("neutro", "Não configurado", "crie painel_config.json (veja o README)")
+            if self.cf_token and not self.cf_conta:
+                falta = "falta o ID da conta (cf_account_id) no painel_config.json"
+            elif self.cf_conta and not self.cf_token:
+                falta = "falta o token (cf_api_token) no painel_config.json"
+            else:
+                falta = "sem painel_config.json: o resto do painel funciona normalmente"
+            self.luz_publico.definir("neutro", "Não configurado", falta)
         # resultados prontos
         try:
             while True:
